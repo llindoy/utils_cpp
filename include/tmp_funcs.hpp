@@ -13,7 +13,7 @@ namespace utils
 {
 template <typename T>
 using complex = linalg::complex<T>;
-{
+}
 
 namespace tmp
 {
@@ -35,7 +35,7 @@ template <typename T>
 struct get_real_type{using type = T;};
 
 template <typename T> 
-struct get_real_type<complex<T> >{using type = T;};
+struct get_real_type<utils::complex<T> >{using type = T;};
 
 template <typename T> struct is_complex : std::false_type {};
 template <typename T> struct is_complex<std::complex<T> > 
