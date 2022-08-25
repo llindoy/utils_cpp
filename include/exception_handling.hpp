@@ -1,5 +1,5 @@
-#ifndef EXCEPTION_HANDLING_MACROS_HPP
-#define EXCEPTION_HANDLING_MACROS_HPP
+#ifndef UTILS_EXCEPTION_HANDLING_MACROS_HPP
+#define UTILS_EXCEPTION_HANDLING_MACROS_HPP
 
 #include <stdexcept>
 #include <iostream>
@@ -15,6 +15,8 @@ namespace utils
     };
 }
 
+
+#ifndef LINALG_EXCEPTION_HANDLING_MACROS_HPP
 #define DEBUG
 
 #define STRINGIFY_MACRO(x) #x
@@ -98,4 +100,5 @@ namespace utils
     }   
 #endif
 
+#endif
 #endif

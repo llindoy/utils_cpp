@@ -187,6 +187,20 @@ public:
     static void load(const obj& val, std::string& v){ASSERT(val.IsString(), "Failed to load string the input val object is not a number."); v = val.GetString();}
 };
 
+template <>
+class loader<bool, void>
+{
+public:
+    using int_type = bool;
+public:
+    template <typename obj>
+    static bool is_type(const obj& val){return val.IsBool();}
+    template <typename obj>
+    static int_type load(const obj& val){ASSERT(val.IsBool(), "Failed to load int_type the input val object is not a number."); return val.GetBool();}
+    template <typename obj>
+    static void load(const obj& val, int_type& v){ASSERT(val.IsBool(), "Failed to load int_type the input val object is not a number."); v = val.GetBool();}
+};
+
 template <typename T>
 class loader<T, typename std::enable_if<std::is_integral<T>::value, void>::type >
 {
@@ -688,6 +702,18 @@ public:
         CALL_AND_RETHROW(return rapidjson_loader::loader<type>::load(obj[std::forward<T>(name)]));
     }
 
+
+    template <typename type, typename T, typename Iobj>
+    static bool load_optional(const Iobj& obj, T&& name, type& v)
+    {
+        if(has_member(obj, std::forward<T>(name)))
+        {
+            CALL_AND_RETHROW(rapidjson_loader::loader<type>::load(obj[std::forward<T>(name)], v));
+            return true;
+        }
+        return false;
+    }
+
     template <typename T, typename Iobj>
     static const input_object& get(const Iobj& obj, T&& name)
     {
@@ -753,6 +779,6 @@ public:
 };
 
 }
-
+using IOWRAPPER = io::input_wrapper<io::rapidjson_tag>;
 #endif
 
