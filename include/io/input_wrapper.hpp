@@ -34,10 +34,10 @@ struct rapidjson_tag{};
 namespace rapidjson_loader
 {
 template <typename type, typename enabled = void>
-struct loader;
+class loader;
 
 template <typename T> 
-struct complex_from_string
+class complex_from_string
 {
 public:
     using complex_type = linalg::complex<T>;
@@ -78,7 +78,7 @@ public:
 
 
 template <typename T>
-struct parse_complex
+class parse_complex
 {
 public:
     static_assert(std::is_floating_point<T>::value, "Require a floating point real type when parsing complex numbers.");
