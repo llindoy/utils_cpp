@@ -5,15 +5,15 @@
 
 namespace io
 {
-
 template <typename T> class type_info;
-
 }
 
 #define CONFIG_STRINGIFY(x) #x
 #define CONFIG_TOSTRING(x) CONFIG_STRINGIFY(x)
 
 #define REGISTER_TYPE_INFO_WITH_NAME(T, _name, _desc, _req)                                                     \
+namespace io                                                                                                    \
+{                                                                                                               \
 template <> class type_info<T>                                                                                  \
 {                                                                                                               \
 public:                                                                                                         \
@@ -26,9 +26,12 @@ public:                                                                         
     static const std::string& get_name(){static std::string name(_name); return name;}                          \
     static const std::string& get_description(){static std::string desc(_desc);   return desc;}                 \
     static const std::string& get_required_inputs(){static std::string req(_req);    return req;}               \
-};  
+};                                                                                                              \
+}                                                                                                               
 
 #define REGISTER_TEMPLATE_TYPE_INFO_WITH_NAME(T, _name, _desc, _req)                                                        \
+namespace io                                                                                                                \
+{                                                                                                                           \
 template <typename ... Args> class type_info<T<Args...>>                                                                    \
 {                                                                                                                           \
 public:                                                                                                                     \
@@ -41,7 +44,8 @@ public:                                                                         
     static const std::string& get_name(){static std::string name(_name); return name;}                                      \
     static const std::string& get_description(){static std::string desc(_desc);   return desc;}                             \
     static const std::string& get_required_inputs(){static std::string req(_req);    return req;}                           \
-};  
+};                                                                                                                          \
+}                                                                                                               
 
 #endif
 

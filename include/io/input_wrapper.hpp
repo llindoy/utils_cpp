@@ -34,7 +34,7 @@ struct rapidjson_tag{};
 namespace rapidjson_loader
 {
 template <typename type, typename enabled = void>
-struct loader;
+class loader;
 
 template <typename T> 
 struct complex_from_string
@@ -767,6 +767,12 @@ public:
     {
         ASSERT(has_member(obj, std::forward<T>(name)), "Variable not found.");
         return obj[std::forward<T>(name)].IsObject();
+    }
+
+    template <typename Iobj> 
+    static bool is_object(const Iobj& obj)
+    {
+        return obj.IsObject();
     }
 
 

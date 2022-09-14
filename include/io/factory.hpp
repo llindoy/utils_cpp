@@ -5,8 +5,7 @@
 #include <map>
 #include <string>
 #include <sstream>
-#include "io/input_wrapper.hpp"
-#include "io.hpp"
+#include "input_wrapper.hpp"
 #include "type_info.hpp"
 
 namespace io

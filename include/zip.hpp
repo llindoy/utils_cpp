@@ -70,14 +70,7 @@ class zip_container
     static_assert(sizeof...(Args) != 0, "Cannot create zip_container object containing zero elements");
 
 public:
-    class iterator : 
-        std::iterator<
-            std::forward_iterator_tag, 
-            std::tuple<typename Args::value_type...>, 
-            std::ptrdiff_t, 
-            std::tuple<typename Args::value_type*...>, 
-            std::tuple<ref_t<Args>... >
-        >
+    class iterator 
     {
     protected:
         std::tuple<iter_t<Args>... > m_loc;
@@ -112,6 +105,12 @@ public:
         {
             return dereference_tuple(m_loc);
         }
+        //iterator traits
+        using difference_type = long;
+        using value_type = long;
+        using pointer = const long*;
+        using reference = const long&;
+        using iterator_category = std::forward_iterator_tag;
     };
 
     explicit zip_container(Args&... containers)
@@ -141,14 +140,7 @@ class reverse_zip_container
     static_assert(sizeof...(Args) != 0, "Cannot create reverse_zip_container object containing zero elements");
 
 public:
-    class iterator : 
-        std::iterator<
-            std::forward_iterator_tag, 
-            std::tuple<typename Args::value_type...>, 
-            std::ptrdiff_t, 
-            std::tuple<typename Args::value_type*...>, 
-            std::tuple<ref_t<Args>... >
-        >
+    class iterator 
     {
     protected:
         std::tuple<riter_t<Args>... > m_loc;
@@ -183,6 +175,12 @@ public:
         {
             return dereference_tuple(m_loc);
         }
+        //iterator traits
+        using difference_type = long;
+        using value_type = long;
+        using pointer = const long*;
+        using reference = const long&;
+        using iterator_category = std::forward_iterator_tag;
     };
 
     explicit reverse_zip_container(Args&... containers)
