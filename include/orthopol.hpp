@@ -169,7 +169,7 @@ public:
         if(m_p0 == T(0)){m_p0 = normalisation;}
 
         linalg::symmetric_tridiagonal_matrix<T> poly_recurrence(npoints, npoints);
-        std::cerr << m_scale << std::endl;
+        //std::cerr << m_scale << std::endl;
         for(size_t i = 0; i < npoints; ++i)
         {
             poly_recurrence(i, i) = alpha(i);
@@ -435,7 +435,7 @@ void nonclassical_polynomial(orthopol<T>& orth, const orthopol<T>& orthref, cons
         orth.set_alpha(i, a(i));
         if(i != 0)
         {
-            std::cerr << "b" << i << " " << b(i) << std::endl;
+            std::cerr << "b" << i << " " << b(i) << "\r";
             ASSERT(b(i) >= 0, "Failed to construct nonclassical orthogonal polynomial object.  Invalid beta coefficients encountered.  This may be caused by inaccurate evaluation of the moments or overflow or underflow issues in the calculation.  These issues may be resolved by changing the monic polynomials used for the construction of the moments..");
             orth.set_beta(i-1, std::sqrt(b(i)));
         }
@@ -465,7 +465,7 @@ void nonclassical_polynomial(orthopol<T>& orth, const orthopol<T>& orthref, size
         for(size_t i = 0; i < 2*nmax; ++i)
         {
             modified_moments[i] = quad::adaptive_integrate([&](T x){return orthref.monic(x, i)*f(x)*scale_factor;}, gauss_leg, xmin, xmax, false, tol, true, rel_tol, 0.0, max_order, false);
-            std::cerr << i << " " << modified_moments[i] << std::endl;
+            std::cerr << i << " " << modified_moments[i] << "\r";
         }
         CALL_AND_HANDLE(nonclassical_polynomial(orth, orthref, modified_moments, scale_factor), "An issues occured when applying modified Chebyshev algorithm.  This is likely a result of a poor choice of the monic polynomials, resulting in inaccurate evaluation of moments.");
         orth.set_domain(xmin, xmax);
@@ -498,7 +498,7 @@ void nonclassical_polynomial(orthopol<T>& orth, const orthopol<T>& orthref, T xm
         for(size_t i = 0; i < 2*nmax; ++i)
         {
             modified_moments[i] = quad::adaptive_integrate([&](T x){return orthref.monic(x, i)*f(x)*scale_factor;}, gauss_leg, xmin, xmax, false, tol, true, rel_tol, 0.0, max_order, false);
-            std::cerr << i << " " << modified_moments[i] << std::endl;
+            std::cerr << i << " " << modified_moments[i] << "\r";
         }
         CALL_AND_HANDLE(nonclassical_polynomial(orth, orthref, modified_moments, scale_factor), "An issues occured when applying modified Chebyshev algorithm.  This is likely a result of a poor choice of the monic polynomials, resulting in inaccurate evaluation of moments.");
         orth.set_domain(xmin, xmax);
