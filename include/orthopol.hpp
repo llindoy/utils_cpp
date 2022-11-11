@@ -8,6 +8,7 @@
 
 #include <linalg/linalg.hpp>
 #include <linalg/decompositions/eigensolvers/eigensolver.hpp>
+//#include <linalg/decompositions/tridiagonalisation/tridiagonalisation.hpp>
 #include "quadrature/adaptive_integrate.hpp"
 #include "quadrature/gaussian_quadrature/gauss_jacobi_quadrature.hpp"
 
@@ -135,7 +136,7 @@ public:
         CALL_AND_HANDLE(resize(n), "Failed to resize buffers.");
         for(size_t i=0; i<n; ++i)
         {
-            size_t k = i+1;
+            //size_t k = i+1;
             m_poly_recurrence(i, i) = alpha[i];
             if(i+1 < n)
             {
@@ -169,7 +170,7 @@ public:
         if(m_p0 == T(0)){m_p0 = normalisation;}
 
         linalg::symmetric_tridiagonal_matrix<T> poly_recurrence(npoints, npoints);
-        std::cerr << m_scale << std::endl;
+        //std::cerr << m_scale << std::endl;
         for(size_t i = 0; i < npoints; ++i)
         {
             poly_recurrence(i, i) = alpha(i);
@@ -217,6 +218,25 @@ public:
     const size_t& Nmax() const{return m_max_order;} 
     size_t npoints() const{return m_w.size();}
     const size_t& size() const{return m_max_order;}
+
+    const T& pi0() const{return m_p0;}
+public:
+    template <typename vec_type>
+    void set_nodes_and_weights(const vec_type& nodes, const vec_type& weights)
+    {
+        ASSERT(nodes.size() == weights.size(), "Nodes and weights are not the same sizes.");
+        ASSERT(nodes.size() <= m_max_order, "Nodes and weights out of bounds.");
+        
+        m_x.resize(nodes.size());
+        m_w.resize(nodes.size());
+
+        for(size_t i = 0; i < nodes.size(); ++i)
+        {
+            m_x(i) = nodes[i];
+            m_w(i) = weights[i];
+        }
+    }
+
 protected:
     size_t m_max_order;
     linalg::symmetric_tridiagonal_matrix<T> m_poly_recurrence;
@@ -435,7 +455,7 @@ void nonclassical_polynomial(orthopol<T>& orth, const orthopol<T>& orthref, cons
         orth.set_alpha(i, a(i));
         if(i != 0)
         {
-            std::cerr << "b" << i << " " << b(i) << std::endl;
+            std::cerr << "b" << i << " " << b(i) << "\r";
             ASSERT(b(i) >= 0, "Failed to construct nonclassical orthogonal polynomial object.  Invalid beta coefficients encountered.  This may be caused by inaccurate evaluation of the moments or overflow or underflow issues in the calculation.  These issues may be resolved by changing the monic polynomials used for the construction of the moments..");
             orth.set_beta(i-1, std::sqrt(b(i)));
         }
@@ -465,7 +485,7 @@ void nonclassical_polynomial(orthopol<T>& orth, const orthopol<T>& orthref, size
         for(size_t i = 0; i < 2*nmax; ++i)
         {
             modified_moments[i] = quad::adaptive_integrate([&](T x){return orthref.monic(x, i)*f(x)*scale_factor;}, gauss_leg, xmin, xmax, false, tol, true, rel_tol, 0.0, max_order, false);
-            std::cerr << i << " " << modified_moments[i] << std::endl;
+            std::cerr << i << " " << modified_moments[i] << "\r";
         }
         CALL_AND_HANDLE(nonclassical_polynomial(orth, orthref, modified_moments, scale_factor), "An issues occured when applying modified Chebyshev algorithm.  This is likely a result of a poor choice of the monic polynomials, resulting in inaccurate evaluation of moments.");
         orth.set_domain(xmin, xmax);
@@ -498,7 +518,7 @@ void nonclassical_polynomial(orthopol<T>& orth, const orthopol<T>& orthref, T xm
         for(size_t i = 0; i < 2*nmax; ++i)
         {
             modified_moments[i] = quad::adaptive_integrate([&](T x){return orthref.monic(x, i)*f(x)*scale_factor;}, gauss_leg, xmin, xmax, false, tol, true, rel_tol, 0.0, max_order, false);
-            std::cerr << i << " " << modified_moments[i] << std::endl;
+            std::cerr << i << " " << modified_moments[i] << "\r";
         }
         CALL_AND_HANDLE(nonclassical_polynomial(orth, orthref, modified_moments, scale_factor), "An issues occured when applying modified Chebyshev algorithm.  This is likely a result of a poor choice of the monic polynomials, resulting in inaccurate evaluation of moments.");
         orth.set_domain(xmin, xmax);
@@ -509,6 +529,78 @@ void nonclassical_polynomial(orthopol<T>& orth, const orthopol<T>& orthref, T xm
         RAISE_EXCEPTION("Failed to construct orthonormal polynomials that are orthogonal to a non-classical weight function. ");
     }
 }
+
+
+//Construct the orthonormal polynomial rule given a set of weights and nodes using the Lancsoz algorithm
+template <typename T, typename vec_type>
+void nonclassical_polynomial(orthopol<T>& orth, const vec_type& x, const vec_type& w)
+{
+    ASSERT(x.size() == w.size(), "Weights and nodes are not the same size.");
+    size_t N = x.size() + 1;
+
+    //now we go ahead and form the symmetric tridiagonal matrix using the RKPW algorithm
+    linalg::vector<T> alpha(N);  alpha.fill_zeros();    alpha(0) = 1.0;
+    linalg::vector<T> beta(w.size()); beta.fill_zeros();  
+    
+
+    for(size_t n = 0; n < w.size(); ++n)
+    {
+        alpha(n+1) = x[n];
+        beta(n) = 0.0;
+
+        T pi_p = w[n];
+        T gp = 1.0;   T sk = 0.0;   T sp = 0.0;
+        T tp = 0.0;  T tk = 0.0;
+        
+
+        for(size_t k=1; k <= n+1; ++k)
+        {
+            T bp = beta(k-1);   
+            T rhok = bp + pi_p;
+            beta(k-1) = gp*rhok;
+            bool sk0 = false;
+
+            if(std::abs(rhok) < 1e-15)
+            {
+                gp = 1.0;
+                sk = 0.0;
+                sk0 = true;
+            }
+            else
+            {
+                gp = bp/rhok;
+                sk = pi_p/rhok;
+            }
+
+            tk = sk*(alpha(k) - x[n]) - gp*tp;
+            alpha(k) = alpha(k) - (tk-tp);
+
+            if(sk0){pi_p = sp*bp;}
+            else{pi_p = tk*tk/sk;}
+
+            //now advance previous variables
+            tp = tk;
+            sp = sk;
+        }
+    }
+
+
+    orth.resize(w.size());
+
+    //now we set 
+    orth.set_weight_function_integral(beta(0));
+    for(size_t i = 0; i < w.size(); ++i)
+    {
+        orth.set_alpha(i, alpha(i+1));
+    }
+    for(size_t i = 0; i+1 < w.size(); ++i)
+    {
+        orth.set_beta(i,std::sqrt(beta(i+1)));
+    }
+
+    orth.set_nodes_and_weights(x, w);
+}
+
 
 #endif
 
