@@ -769,6 +769,12 @@ public:
         return obj[std::forward<T>(name)].IsObject();
     }
 
+    template <typename Iobj> 
+    static bool is_object(const Iobj& obj)
+    {
+        return obj.IsObject();
+    }
+
 
     template <typename Iobj, typename T> 
     static bool is_array(const Iobj& obj, T&& name)
