@@ -17,6 +17,10 @@
 namespace io
 {
 
+
+template <typename INTERFACE_TYPE>
+class factory;
+
 static std::string& remove_whitespace_and_to_lower(std::string& str)
 {
     std::transform(str.begin(), str.end(), str.begin(), [](unsigned char c){return std::tolower(c);});
@@ -614,6 +618,33 @@ public:
             std::cerr << ex.what() << std::endl;
             RAISE_EXCEPTION("Failed to load csr matrix from rapidjson value.");
         }
+    }
+};
+
+/*
+ *  A class for loading a shared ptr that has had a self registering factory created for it
+ */
+template <typename T>
+class loader<std::shared_ptr<T> >
+{
+public:
+    using ftype = factory<T>;
+public:
+    template <typename obj>
+    static bool is_type(const obj& val)
+    {   
+        return ftype::is_loadable(val);
+    }
+
+    template <typename obj>
+    static std::shared_ptr<T> load(const obj& val)
+    {
+        CALL_AND_RETHROW(return ftype::create(val));
+    }
+    template <typename obj>
+    static void load(const obj& val, std::shared_ptr<T>& v)
+    {
+        CALL_AND_RETHROW(v = ftype::create(val));
     }
 };
 

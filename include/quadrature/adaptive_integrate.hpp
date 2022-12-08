@@ -223,7 +223,7 @@ public:
     using result_type = typename levin_cosine<T>::result_type;
     using fresult_type = typename levin_fourier<T>::result_type;
 public:
-    adaptive_fourier_integrals(size_t Nlev, size_t Ngauss) : m_levf(Nlev), m_levc(Nlev), m_levs(Nlev), m_gauss(Ngauss) {}
+    adaptive_fourier_integrals(size_t Nlev = 10, size_t Ngauss = 100) : m_levf(Nlev), m_levc(Nlev), m_levs(Nlev), m_gauss(Ngauss) {}
     adaptive_fourier_integrals(const adaptive_fourier_integrals& o) = default;
     adaptive_fourier_integrals(adaptive_fourier_integrals&& o) = default;
     adaptive_fourier_integrals& operator=(const adaptive_fourier_integrals& o) = default;
