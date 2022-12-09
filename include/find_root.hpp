@@ -49,7 +49,7 @@ T find_root_monotonic(const T& x0, F&& f, DF&& df, size_t niters = 100, T xtol =
             return x;
         }
     }
-
+    return -1;
     std::cerr << "max_iter exceeded: failed to converge roots." << std::endl;
 }
 
