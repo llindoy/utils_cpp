@@ -138,10 +138,10 @@ public:
 
             for(size_t i=0; i<Impl::nfuncs(); ++i)
             {
-                Fija[i] = 0.0;  Fijb[i] = 0.0;
+                Fija[i] = real_type(0.0);  Fijb[i] = real_type(0.0);
                 for(size_t k=0; k<m_p; ++k)
                 {
-                    Fija[i] += (k % 2 == 0 ? 1.0 : -1.0) * m_c(k + i*m_p);
+                    Fija[i] += real_type(k % 2 == 0 ? 1.0 : -1.0) * m_c(k + i*m_p);
                     Fijb[i] += m_c(k + i*m_p);
                 }
             }
