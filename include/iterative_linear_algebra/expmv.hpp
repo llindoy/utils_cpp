@@ -1,5 +1,5 @@
-#ifndef KRYLOV_SUBSPACE_INTEGRATOR_HPP
-#define KRYLOV_SUBSPACE_INTEGRATOR_HPP
+#ifndef KRYLOV_SHORT_ITERATIVE_ARNOLDI_HPP
+#define KRYLOV_SHORT_ITERATIVE_ARNOLDI_HPP
 
 #include <limits>
 #include <utility>
@@ -14,10 +14,10 @@ namespace utils
 {
 
 template <typename T, typename backend = linalg::blas_backend>
-class krylov_integrator;
+class expmv;
 
 template <typename T, typename backend>
-class krylov_integrator<complex<T>, backend>
+class expmv<complex<T>, backend>
 {
 public:
     using value_type = complex<T>;
@@ -55,13 +55,13 @@ protected:
     real_type m_delta;
 
 public:
-    krylov_integrator() : m_arnoldi(), m_krylov_dim(0), m_cur_order(0), m_istride(1), m_eps(std::numeric_limits<real_type>::epsilon()*1e3), m_gamma(0.8), m_delta(0.9) {}
-    krylov_integrator(size_type krylov_dim, size_type dim, real_type eps = std::numeric_limits<real_type>::epsilon()*1e3) : m_arnoldi(), m_krylov_dim(krylov_dim), m_cur_order(0), m_istride(1), m_eps(eps), m_gamma(0.8), m_delta(0.9) {CALL_AND_HANDLE(resize(krylov_dim, dim), "Failed to construct krylov subspace integrator.");}
-    krylov_integrator(const krylov_integrator& o) = default;
-    krylov_integrator(krylov_integrator&& o) = default;
+    expmv() : m_arnoldi(), m_krylov_dim(0), m_cur_order(0), m_istride(1), m_eps(std::numeric_limits<real_type>::epsilon()*1e3), m_gamma(0.8), m_delta(0.9) {}
+    expmv(size_type krylov_dim, size_type dim, real_type eps = std::numeric_limits<real_type>::epsilon()*1e3) : m_arnoldi(), m_krylov_dim(krylov_dim), m_cur_order(0), m_istride(1), m_eps(eps), m_gamma(0.8), m_delta(0.9) {CALL_AND_HANDLE(resize(krylov_dim, dim), "Failed to construct krylov subspace integrator.");}
+    expmv(const expmv& o) = default;
+    expmv(expmv&& o) = default;
 
-    krylov_integrator& operator=(const krylov_integrator& o) = default;
-    krylov_integrator& operator=(krylov_integrator&& o) = default;
+    expmv& operator=(const expmv& o) = default;
+    expmv& operator=(expmv&& o) = default;
 
     void resize(size_type krylov_dim, size_type dim)
     {
@@ -111,19 +111,19 @@ public:
             RAISE_EXCEPTION("Failed to resize krylov integrator.");
         }
     }
-
+  
     template <typename vec_type, typename ... Args>
     typename std::enable_if<linalg::is_same_backend<vec_type, linalg::vector<value_type, backend_type>>::value, size_type>::type 
     operator()(vec_type& x, real_type dt, value_type coeff, Args&& ... args)
     {
         try
         {
-            size_type krylov_dim = m_krylov_dim < x.size() ? m_krylov_dim : x.size();
-            ASSERT(m_istride <= krylov_dim, "The stride for determining error estimates is too large.");
+            size_type size = x.size();
+            size_type krylov_dim = std::min(m_krylov_dim, size);
 
             //construct the krylov subspace and store the final matrix element required for computing error estimates and matrix exponentials
             CALL_AND_HANDLE(m_tempr.resize(x.size()), "Failed to resize the working buffer.");
-            CALL_AND_HANDLE(m_arnoldi.resize(krylov_dim, x.size()), "Failed to resize krylov subspace.");
+            CALL_AND_HANDLE(m_arnoldi.resize(krylov_dim, size), "Failed to resize krylov subspace.");
 
             if(dt == real_type(0)){return 0.0;}
             
@@ -139,12 +139,12 @@ public:
                 real_type scale_factor = dt_trial;
                 bool nan_encountered;
                 real_type err_res;
-                determine_order(x, dt_trial, coeff, scale_factor, nan_encountered, err_res, std::forward<Args>(args)...);
+                CALL_AND_HANDLE(determine_order(x, dt_trial, coeff, scale_factor, nan_encountered, err_res, std::forward<Args>(args)...), "Failed to determine order");
                 nevals += m_cur_order;
 
                 if(!nan_encountered)
                 {
-                    err = err_res/std::abs(dt_trial);
+                    err = err_res;///std::abs(dt_trial);
 
                     ASSERT(m_cur_order >= 1, "The iend value obtained is not allowed.");
                     
@@ -209,103 +209,6 @@ public:
 
     const size_type& current_order() const{return m_cur_order;}
 
-    //need to output the eigenvectors correctly ordered
-    template <typename vec_type, typename ... Args>
-    typename std::enable_if<linalg::is_same_backend<vec_type, linalg::vector<value_type, backend_type>>::value, size_type>::type 
-    eigs(vec_type& x, linalg::diagonal_matrix<value_type, backend_type>& vals, linalg::matrix<value_type, backend_type>& vecs, real_type scalefactor, size_type neigs, size_type maxdim, real_type errtol, Args&& ... args)
-    {
-        try
-        {
-            size_type krylov_dim = m_krylov_dim < x.size() ? m_krylov_dim : x.size();
-            if(maxdim > krylov_dim){maxdim = krylov_dim;}
-            ASSERT(m_istride <= krylov_dim, "The stride for determining error estimates is too large.");
-            size_type order_start = neigs;
-
-            ASSERT(neigs < m_krylov_dim, "Cannot compute more eigenvalues than dimension of object.");  
-            if(neigs > x.size()){neigs = x.size();}
-
-            //construct the krylov subspace and store the final matrix element required for computing error estimates and matrix exponentials
-            CALL_AND_HANDLE(m_tempr.resize(x.size()), "Failed to resize the working buffer.");
-            CALL_AND_HANDLE(m_arnoldi.resize(krylov_dim, x.size()), "Failed to resize krylov subspace.");
-            CALL_AND_HANDLE(m_arnoldi.reset_zeros(), "Failed to reset arnoldi iteration.");
-            CALL_AND_HANDLE(m_sorted_vals.resize(krylov_dim), "Failed to resize the working buffer.");
-            CALL_AND_HANDLE(m_sorted_vals2.resize(neigs), "Failed to resize the eigenvalue storage array.");
-        
-            //compute the arnoldi iteration. 
-
-            //now compute the eigenvalues in the arnoldi subspace
-            CALL_AND_HANDLE(m_vals.resize(krylov_dim), "Failed to resize the working buffer.");
-            CALL_AND_HANDLE(vecs.resize(neigs, x.size()), "Failed to resize the working buffer.");
-
-            size_type istart = 0;
-            size_type iend = maxdim;
-            bool keep_running = true;
-            bool first_call = true;
-            for(iend = order_start; iend <= krylov_dim+m_istride && keep_running; iend+=m_istride)
-            {
-                if(iend > maxdim){iend = maxdim; keep_running = false;}   
-                try
-                {
-                    bool ended_early = false;
-                    CALL_AND_HANDLE(ended_early = m_arnoldi.partial_krylov_step(x, scalefactor, istart, iend, std::forward<Args>(args)...), "Failed to construct the krylov subspace using a arnoldi iteration");
-                    auto H = m_arnoldi.H();      
-
-                    m_eigensolver(H, m_vals, m_rvecs, m_lvecs, true);
-                    
-                    //sort the eigenvalues based on norm
-                    {
-                        m_sorted_vals.resize(m_vals.size());
-                        for(size_type i = 0; i < m_vals.size(); ++i)
-                        {
-                            m_sorted_vals[i] = std::make_pair(m_vals[i], i);
-                        }
-                        std::sort(m_sorted_vals.begin(), m_sorted_vals.end(), 
-                            [](const std::pair<value_type, size_type>& a, const std::pair<value_type, size_type>& b)
-                            {
-                                return abs(std::get<0>(a)) > abs(std::get<0>(b));
-                            });
-                    }
-
-                    //now we check the error 
-                    bool err_tol_satisfied = true;
-                    if(first_call)
-                    {
-                        CALL_AND_HANDLE(m_sorted_vals2 = m_sorted_vals, "Failed to copy eigenvalue array.");
-                        first_call = false;
-                        err_tol_satisfied = false;
-                    }
-                    else
-                    {
-                        for(size_type i = 0; i < neigs; ++i)
-                        {
-                            if(abs((std::get<0>(m_sorted_vals[i]) - std::get<0>(m_sorted_vals2[i]))/std::get<0>(m_sorted_vals[i])) > errtol){err_tol_satisfied = false;}
-                            m_sorted_vals2[i] = m_sorted_vals[i];
-                        }
-                    }
-                    if(err_tol_satisfied || ended_early){keep_running = false;}
-                } 
-                catch(const std::exception& ex)
-                {
-                    std::cerr << ex.what() << std::endl;
-                    RAISE_EXCEPTION("Error when attempting to compute eigenvalues.");
-                }
-            }
-            //copy the eigenvalues to the device
-            CALL_AND_HANDLE(sort_vecs_and_vals(vals, vecs, scalefactor), "Failed to sort the eigenvalues.");
-            return iend;
-        }
-        catch(const linalg::invalid_value& ex)
-        {
-            std::cerr << ex.what() << std::endl;
-            RAISE_NUMERIC("performing krylov subspace integration");
-        }
-        catch(const std::exception& ex)
-        {
-            std::cerr << ex.what() << std::endl;
-            RAISE_EXCEPTION("Failed to perform krylov subspace integration.");
-        }
-    }
-
 protected:
     void sort_vecs_and_vals(linalg::diagonal_matrix<value_type, backend_type>& vals, linalg::matrix<value_type, backend_type>& vecs, real_type scalefactor)
     {
@@ -347,81 +250,93 @@ protected:
     template <typename vec_type, typename ... Args>
     void determine_order(vec_type& x, real_type dt, value_type coeff, real_type scale_factor, bool& nan_encountered,  real_type& err_res, Args&& ... args)
     {
-        //now we determine the initial 
-        size_type order_start = 2;
-        real_type emin = -1e10;
-        size_t imin = 0;
-        
-        size_type krylov_dim = m_krylov_dim < x.size() ? m_krylov_dim : x.size();
-        CALL_AND_HANDLE(m_arnoldi.reset_zeros(), "Failed to reset arnoldi iteration.");
-        size_type istart = 0;
-        nan_encountered = false;
-        size_type iend;
-        std::vector<std::pair<real_type, size_type> > mdtres(m_krylov_dim);
-        size_type counter = 0;
-        bool keep_running = true;
-        for(iend = order_start; iend < m_krylov_dim+m_istride; iend+=m_istride)
+        try
         {
-            if(iend > krylov_dim){iend = krylov_dim;    keep_running = false;}   
-            try
-            {
-                bool ended_early = false;
-                CALL_AND_HANDLE(ended_early = m_arnoldi.partial_krylov_step(x, scale_factor, istart, iend, std::forward<Args>(args)...), "Failed to construct the krylov subspace using a arnoldi iteration");
-                if(ended_early){keep_running = false;}
-                auto H = m_arnoldi.H();      
-                m_eigensolver(H, m_vals, m_rvecs, m_lvecs, true);
-                err_res = local_error_estimate(std::abs(dt), coeff/scale_factor);
-                //std::cerr << iend << " " << dt << " " << err_res << std::endl;
-                if(ended_early){m_cur_order = m_arnoldi.current_krylov_dim(); return;}
-                mdtres[counter] = std::make_pair(std::abs(std::pow(m_eps/(err_res/std::abs(dt)), real_type(1.0/m_arnoldi.current_krylov_dim()))*(std::abs(dt))), m_arnoldi.current_krylov_dim());
-                ++counter;
-            } 
-            catch(const std::exception& ex)
-            {
-                nan_encountered = true;
-                m_cur_order = 0;
-                return ;
-            }
-        
-            if(!nan_encountered)    
-            {
-                if(err_res/std::abs(dt) < m_delta*m_eps || keep_running == false)
-                {
-                    m_cur_order = iend; return;
-                }
-                if(emin < 0 || err_res < emin)
-                {
-                    emin = err_res;
-                    imin = m_arnoldi.current_krylov_dim();
-                }
+            //now we determine the initial 
+            size_type size = x.size();
+            size_type krylov_dim = std::min(m_krylov_dim, size);
+            size_type istride = std::min(m_istride, krylov_dim);
+            size_type order_start = 2;
+            real_type emin = -1e10;
+            size_t imin = 0;
+            
+            CALL_AND_HANDLE(m_arnoldi.reset_zeros(), "Failed to reset arnoldi iteration.");
+            size_type istart = 0;
+            nan_encountered = false;
+            size_type iend;
+            std::vector<std::pair<real_type, size_type> > mdtres(m_krylov_dim);
+            size_type counter = 0;
+            bool keep_running = true;
 
-                //if the current error is much larger than the previous smallest error then we stop attempting to adapt the order at this stage and attemp
-                //to make the krylov subspace step with the previous smallest order
-                if(emin > 0 && err_res > emin*1e5)
+            for(iend = order_start; iend < m_krylov_dim+istride && keep_running; iend+=istride)
+            {
+                if(iend > krylov_dim){iend = krylov_dim;    keep_running = false;}   
+                try
                 {
-                    m_cur_order = imin;
-                    m_arnoldi.finalise_krylov_rep(m_cur_order);
-                    auto H2 = m_arnoldi.H();      
-                    CALL_AND_HANDLE(m_eigensolver(H2, m_vals, m_rvecs, m_lvecs, true), "Failed to diagonalise upper hessenberg matrix.");
-                    CALL_AND_HANDLE(err_res = local_error_estimate(std::abs(dt), coeff/scale_factor), "Failed to compute local error estimate."); 
-                    return;
+                    bool ended_early = false;
+                    CALL_AND_HANDLE(ended_early = m_arnoldi.partial_krylov_step(x, scale_factor, istart, iend, std::forward<Args>(args)...), "Failed to construct the krylov subspace using a arnoldi iteration");
+                    if(ended_early){keep_running = false;}
+                    auto H = m_arnoldi.H();      
+                    m_eigensolver(H, m_vals, m_rvecs, m_lvecs, true);
+                    err_res = local_error_estimate(std::abs(dt), coeff/scale_factor);
+                    //std::cerr << iend << " " << dt << " " << err_res << std::endl;
+                    if(ended_early){m_cur_order = m_arnoldi.current_krylov_dim(); return;}
+                    mdtres[counter] = std::make_pair(std::abs(std::pow(m_eps/(err_res/std::abs(dt)), real_type(1.0/m_arnoldi.current_krylov_dim()))*(std::abs(dt))), m_arnoldi.current_krylov_dim());
+                    ++counter;
+                } 
+                catch(const std::exception& ex)
+                {
+                    nan_encountered = true;
+                    m_cur_order = 0;
+                    return ;
                 }
-                istart = iend + 1;
+            
+                if(!nan_encountered)    
+                {
+                    if(err_res/std::abs(dt) < m_delta*m_eps || keep_running == false)
+                    {
+                        m_cur_order = iend; return;
+                    }
+                    if(emin < 0 || err_res < emin)
+                    {
+                        emin = err_res;
+                        imin = m_arnoldi.current_krylov_dim();
+                    }
+
+                    //if the current error is much larger than the previous smallest error then we stop attempting to adapt the order at this stage and attemp
+                    //to make the krylov subspace step with the previous smallest order
+                    if(emin > 0 && err_res > emin*1e5)
+                    {
+                        m_cur_order = imin;
+                        m_arnoldi.finalise_krylov_rep(m_cur_order);
+                        auto H2 = m_arnoldi.H();      
+                        CALL_AND_HANDLE(m_eigensolver(H2, m_vals, m_rvecs, m_lvecs, true), "Failed to diagonalise upper hessenberg matrix.");
+                        CALL_AND_HANDLE(err_res = local_error_estimate(std::abs(dt), coeff/scale_factor), "Failed to compute local error estimate."); 
+                        return;
+                    }
+                    istart = iend + 1;
+                    if(istart > krylov_dim){m_cur_order = krylov_dim; keep_running = false;}
+                }
+            }
+            real_type maxdt = 0;    size_type order = 0;
+            for(size_type i = 0; i < counter; ++i)
+            {
+                if(std::abs(std::get<0>(mdtres[i])) > maxdt){maxdt = std::abs(std::get<0>(mdtres[i]));  order = std::get<1>(mdtres[i]);}
+            }
+            m_cur_order = order;
+
+            if(imin != iend)
+            {
+                m_arnoldi.finalise_krylov_rep(m_cur_order);
+                auto H2 = m_arnoldi.H();      
+                CALL_AND_HANDLE(m_eigensolver(H2, m_vals, m_rvecs, m_lvecs, true), "Failed to diagonalise upper hessenberg matrix.");
+                CALL_AND_HANDLE(err_res = local_error_estimate(std::abs(dt), coeff/scale_factor), "Failed to compute local error estimate."); 
             }
         }
-        real_type maxdt = 0;    size_type order = 0;
-        for(size_type i = 0; i < counter; ++i)
+        catch(const std::exception& ex)
         {
-            if(std::abs(std::get<0>(mdtres[i])) > maxdt){maxdt = std::abs(std::get<0>(mdtres[i]));  order = std::get<1>(mdtres[i]);}
-        }
-        m_cur_order = order;
-
-        if(imin != iend)
-        {
-            m_arnoldi.finalise_krylov_rep(m_cur_order);
-            auto H2 = m_arnoldi.H();      
-            CALL_AND_HANDLE(m_eigensolver(H2, m_vals, m_rvecs, m_lvecs, true), "Failed to diagonalise upper hessenberg matrix.");
-            CALL_AND_HANDLE(err_res = local_error_estimate(std::abs(dt), coeff/scale_factor), "Failed to compute local error estimate."); 
+            std::cerr << ex.what() << std::endl;
+            RAISE_EXCEPTION("Failed to determine order for exponential integrator.");
         }
     }
     
