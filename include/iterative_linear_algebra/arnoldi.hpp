@@ -61,8 +61,8 @@ protected:
     bool m_invert_mode;
 public:
 
-    arnoldi() : m_arnoldi(), m_krylov_dim(0), m_istride(1), m_max_iter(1), m_neigs(0), m_eps(std::numeric_limits<real_type>::epsilon()*1e3), m_rel_eps(0.0), m_mode(eigenvalue_target::largest_magnitude), m_verbose(false), m_invert_mode(false){}
-    arnoldi(size_type krylov_dim, size_type dim, real_type eps = std::numeric_limits<real_type>::epsilon()*1e3) : m_arnoldi(), m_krylov_dim(krylov_dim), m_istride(1), m_max_iter(1), m_neigs(0), m_eps(eps), m_rel_eps(0.0), m_mode(eigenvalue_target::largest_magnitude), m_verbose(false), m_invert_mode(false) {CALL_AND_HANDLE(resize(krylov_dim, dim), "Failed to construct krylov subspace integrator.");}
+    arnoldi() : m_arnoldi(), m_krylov_dim(0), m_istride(1), m_max_iter(10), m_neigs(0), m_eps(std::numeric_limits<real_type>::epsilon()*1e3), m_rel_eps(0.0), m_mode(eigenvalue_target::largest_magnitude), m_verbose(false), m_invert_mode(false){}
+    arnoldi(size_type krylov_dim, size_type dim, real_type eps = std::numeric_limits<real_type>::epsilon()*1e3) : m_arnoldi(), m_krylov_dim(krylov_dim), m_istride(1), m_max_iter(10), m_neigs(0), m_eps(eps), m_rel_eps(0.0), m_mode(eigenvalue_target::largest_magnitude), m_verbose(false), m_invert_mode(false) {CALL_AND_HANDLE(resize(krylov_dim, dim), "Failed to construct krylov subspace integrator.");}
     arnoldi(const arnoldi& o) = default;
     arnoldi(arnoldi&& o) = default;
 
