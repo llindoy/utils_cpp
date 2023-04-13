@@ -1,12 +1,15 @@
 #ifndef UTILS_OPERATOR_GEN_AUTO_SUM_OF_PRODUCT_HPP
-#define UTILS_OPERATOR_GEN_AUTO_SUM_OF_PRODUCT_HPPR
+#define UTILS_OPERATOR_GEN_AUTO_SUM_OF_PRODUCT_HPP
 
 #include <vector>
 #include <algorithm>
 #include <unordered_map>
 
 #include "sSOP.hpp"
+#include "compressedSOP.hpp"
 #include "system_information.hpp"
+
+#include "bipartite_graph.hpp"
 
 namespace utils
 {
@@ -17,18 +20,15 @@ class bipartitionSOP
 public:
     //a function for taking a bipartitioning of the Hamiltonain 
     template <typename T>
-    static inline void form_bipartite_graph(const sSOP<T>& sop, const std::vector<size_t>& modes)
+    static inline bipartite_graph<sPOP, T> form_bipartite_graph(const sSOP<T>& sop, const std::vector<size_t>& modes)
     {
         //sort the modes vector into smodes
         std::vector<size_t> smodes(modes.begin(), modes.end());
         std::sort(smodes.begin(), smodes.end());
 
         //start by getting the bipartitioned sets of operators
-        std::vector<sPOP> U, V;
-        std::list<std::tuple<size_t, size_t, T>> E;
+        bipartite_graph<sPOP, T> bpg;
         {
-            size_t nu = 0, nv = 0;
-            std::unordered_map<std::string, std::pair<sPOP, size_t>> _U, _V;
             for(const auto& NBO : sop)
             {
                 const auto& pop = NBO.pop();
@@ -37,66 +37,87 @@ public:
                 //extract tdb
                 bipartition_term(pop, smodes, _u, _v);
 
-                std::string ukey = get_key(_u);
-
                 size_t _ui, _vi;
-                //if the key isn't present in the map
-                auto Ui = _U.find(ukey);
-                if(Ui == _U.end())
+                if(!bpg.U_contains(_u))
                 {
-                    _U.insert(std::make_pair(ukey, std::make_pair(_u, nu)));
-                    _ui = nu;
-                    ++nu;
+                    _ui = bpg.add_U(_u);
                 }
                 else
                 {
-                    _ui = Ui->second.second;
+                    _ui = bpg.U_ind(_u);
                 }
 
-                std::string vkey = get_key(_v);
-                auto Vi = _V.find(vkey);
-                if(Vi == _V.end())
+
+                if(!bpg.V_contains(_v))
                 {
-                    _V.insert(std::make_pair(vkey, std::make_pair(_v, nv)));
-                    _vi = nv;
-                    ++nv;
+                    _vi = bpg.add_V(_v);
                 }
                 else
                 {
-                    _vi = Vi->second.second;
+                    _vi = bpg.V_ind(_v);
                 }
-                E.push_back(std::make_tuple(_ui, _vi, NBO.coeff()));
-            }
 
-            U.resize(_U.size());
-            for(const auto& t : _U)
+                bpg.add_edge(_ui, _vi, NBO.coeff());
+
+            }
+        }
+
+        return bpg;
+    }
+
+
+    //take a sum of product form for a Hamiltonian and determine which terms can be combined together to simplify the representation of the Hamiltonian
+    template <typename T>
+    static inline void simplify_bipartitioning(const sSOP<T>& sop, const std::vector<size_t>& modes)
+    {
+        //bipartition the graph
+        auto bpg = bipartitionSOP::form_bipartite_graph(sop, modes);
+
+        //get a list of all connected subgraphs
+        std::list<decltype(bpg)> sbpg;
+        decltype(bpg)::generate_connected_subgraphs(bpg, sbpg);
+
+        //now iterate over the list of connected subgraphs and form the minimal vertex cover
+        
+        std::list<std::list<size_t>> sum_ops;
+        size_t counter = 0;
+        for(const auto& g : sbpg)
+        {
+            bipartite_matching bpm(g);
+            auto m = bpm.edges();
+            //std::vector<size_t> U,V;
+
+            //std::cerr << "Matching: " << std::endl;
+            //for(const auto& z : m)
+            //{
+            //    std::cerr << g.U(std::get<0>(z)) << " <-> " << g.V(std::get<1>(z)) << std::endl;
+            //}
+
+            auto [_U, _V] = bpm.minimum_vertex_cover(g);
+
+            //now for all of the nodes in _V we push all connected nodes 
+            for(auto v : _V)
             {
-                U[t.second.second] = t.second.first;
+                const auto& ve = g.V_edges(v);
+                std::list<size_t> connected_indices;
+                for(const auto& _u : ve)
+                {
+                    if(std::find(_U.begin(), _U.end(), _u) == _U.end())
+                    {
+                        connected_indices.push_back(_u);
+                    }
+                }
+                sum_ops.push_back(connected_indices);
+
+                std::cout << g.V(v) << std::endl;
+                for(auto u : connected_indices)
+                {
+                    std::cout << "\t: " << g.U(u) << std::endl;
+                }
             }
-            V.resize(_V.size());
-            for(const auto& t : _V)
-            {
-                V[t.second.second] = t.second.first;
-            }
 
-        }
-
-        std::cout << "U" << std::endl;
-        for(size_t i = 0; i < U.size(); ++i)
-        {
-            std::cout << i << " " << U[i] <<std::endl;
-        }
-
-        std::cout << "V" << std::endl;
-        for(size_t i = 0; i < V.size(); ++i)
-        {
-            std::cout << i << " " << V[i] <<std::endl;
-        }
-
-        std::cout << "E" << std::endl;
-        for(const auto& t : E)
-        {
-            std::cout << std::get<0>(t) << " " << std::get<1>(t) << " " << std::get<2>(t) << std::endl;
+            //increment the index counter based on the number of nodes we will have already had to have treated.
+            counter += g.N();
         }
 
     }
@@ -117,16 +138,13 @@ protected:
             }
         }
     }
-
-    static inline std::string get_key(const sPOP& l)
-    {
-        std::ostringstream ss;
-        ss << l;
-        return ss.str();
-    }
 };
 
-class AutoSOP
+
+
+
+
+class SOPUtils
 {
 public:
     template <typename T>
@@ -182,7 +200,7 @@ public:
         sSOP<T> mapped_sop;
         CALL_AND_HANDLE(map_operator(sop, is_fermion_mode, mapped_sop), "Failed to map sum of product operator");
 
-        //now we go through and we amp each 
+        //now we go through and we map each 
         sSOP<T> simplified_sop;
         CALL_AND_HANDLE(simplify_operator(mapped_sop, is_fermion_mode, simplified_sop), "Failed to simplify the form of the sum of product operator.");
 
@@ -197,9 +215,13 @@ protected:
         for(const auto& pop : sop)
         {
             sNBO<T> term;    term.coeff() = pop.coeff();
-            //check if the mode contains a fermionic operator at all.  If it doesn't then we just directly insert it into the new operator
-            if(simplify_string_operator(pop.pop(), is_fermi, term.pop())){term.coeff() = -pop.coeff();}
-            _op += term;
+            //only add in the term if the coefficient is non-zero
+            if(term.coeff() != T(0))
+            {
+                //check if the mode contains a fermionic operator at all.  If it doesn't then we just directly insert it into the new operator
+                if(simplify_string_operator(pop.pop(), is_fermi, term.pop())){term.coeff() = -pop.coeff();}
+                _op += term;
+            }
         }
 
     }
@@ -313,6 +335,7 @@ protected:
     template <typename T> 
     static inline void map_operator(const sSOP<T>& sop, const std::vector<bool>& is_fermi, sSOP<T>& _op)
     {
+
         bool contains_fermionic_operator = false;
         size_t nfermionic = 0;
         for(const auto& isf : is_fermi)
@@ -338,72 +361,81 @@ protected:
             for(const auto& pop : sop)
             {
                 sNBO<T> term;    term.coeff() = pop.coeff();
-                //check if the mode contains a fermionic operator at all.  If it doesn't then we just directly insert it into the new operator
-                bool term_has_fermion_operator = false;
-                for(const auto& op : pop)
+                if(pop.coeff() != T(0))
                 {
-                    if(op.fermionic())
-                    {
-                        term_has_fermion_operator = true;
-                        break;
-                    }
-                }
-
-                if(term_has_fermion_operator)
-                {
-                    //now iterate over the terms in this operator and if the 
+                    //check if the mode contains a fermionic operator at all.  If it doesn't then we just directly insert it into the new operator
+                    bool term_has_fermion_operator = false;
                     for(const auto& op : pop)
                     {
                         if(op.fermionic())
                         {
-                            sOP oterm;
-                            int include_JW_string = jordan_wigner(op, oterm);
+                            term_has_fermion_operator = true;
+                            break;
+                        }
+                    }
 
-                            if(include_JW_string == -1)
+                    if(term_has_fermion_operator)
+                    {
+                        //now iterate over the terms in this operator and if the 
+                        for(const auto& op : pop)
+                        {
+                            if(op.fermionic())
                             {
-                                //add in the sigma_z terms for all fermion modes before the current mode
-                                for(size_t i = 0; i < op.mode(); ++i)
+                                sOP oterm;
+                                int include_JW_string = jordan_wigner(op, oterm);
+
+                                if(include_JW_string == -1)
                                 {
-                                    if(is_fermi[i])
+                                    //add in the sigma_z terms for all fermion modes before the current mode
+                                    for(size_t i = 0; i < op.mode(); ++i)
                                     {
-                                        term*=sOP({"jw", i});
+                                        if(is_fermi[i])
+                                        {
+                                            term*=sOP({"jw", i});
+                                        }
+                                    }
+                                    term*=oterm;
+                                }
+                                else if(include_JW_string == 1)
+                                {
+                                    term*=oterm;
+                                    for(size_t i = 0; i < op.mode(); ++i)
+                                    {
+                                        size_t l = op.mode()-(i+1);
+                                        if(is_fermi[l])
+                                        {
+                                            term*=sOP({"jw", l});
+                                        }
                                     }
                                 }
-                                term*=oterm;
-                            }
-                            else if(include_JW_string == 1)
-                            {
-                                term*=oterm;
-                                for(size_t i = 0; i < op.mode(); ++i)
+                                else
                                 {
-                                    size_t l = op.mode()-(i+1);
-                                    if(is_fermi[l])
-                                    {
-                                        term*=sOP({"jw", l});
-                                    }
+                                    term*=oterm;
                                 }
                             }
                             else
                             {
-                                term*=oterm;
+                                term *= op;
                             }
                         }
-                        else
-                        {
-                            term *= op;
-                        }
+                        _sop += term;
                     }
-                    _sop += term;
-                }
-                else
-                {
-                    _sop += pop;
+                    else
+                    {
+                        _sop += pop;
+                    }
                 }
             }
         }
         else
         {
-            _sop = sop;
+            for(const auto& pop : sop)
+            {
+                if(pop.coeff() != T(0))
+                {
+                    _sop += pop;
+                }
+            }
         }
     
         _op = _sop;
@@ -482,6 +514,69 @@ protected:
         return _nmodes;
     }
 
+};
+
+
+class AutoSOP
+{
+protected:
+    template <typename T>
+    static inline compressedSOP<T> compress_sop_simple(const sSOP<T>& sop, size_t nmodes)
+    {
+
+        std::vector< std::list<std::pair<sOP, std::list<size_t> > >> sops(nmodes);
+
+        for(const auto& pop : sop)
+        {
+            
+        }
+    }
+
+public:
+    template <typename T>
+    static inline compressedSOP<T> simple(const sSOP<T>& _sop, const system_modes& sys_info)
+    {
+        try
+        {
+            sSOP<T> sop;
+
+            CALL_AND_HANDLE(sop = SOPUtils::primitive(_sop, sys_info), "Failed to simplify the SOP object.");
+
+            size_t _nmodes = get_nmodes(sop);
+            size_t nmodes = sys_info.nmodes();
+            ASSERT(nmodes >= _nmodes, "Failed to construct sum_of_product_operator object with the specified number of modes.  The input object has more modes than have been requested.");
+
+            CALL_AND_HANDLE(return compress_sop_simple(sop, nmodes), "Failed to compute the compressed sop object using the simple strategy.");
+        }
+        catch(const std::exception& ex)
+        {
+            std::cerr << ex.what() << std::endl;
+            RAISE_EXCEPTION("Failed to compute the simple form of the SOP operator.");
+        }
+    }
+
+    template <typename T>
+    static inline compressedSOP<T> simple(const sSOP<T>& _sop, size_t nmodes = 0)
+    {
+        try
+        {
+
+            sSOP<T> sop;
+            CALL_AND_HANDLE(sop = SOPUtils::primitive(_sop, nmodes), "Failed to simplify the SOP object.");
+
+            size_t _nmodes = get_nmodes(sop);
+            if(nmodes == 0){nmodes  = _nmodes;}
+            else{ASSERT(nmodes >= _nmodes, "Failed to construct sum_of_product_operator object with the specified number of modes.  The input object has more modes than have been requested.");}
+
+            CALL_AND_HANDLE(return compress_sop_simple(sop, nmodes), "Failed to compute the compressed sop object using the simple strategy.");
+
+        }
+        catch(const std::exception& ex)
+        {
+            std::cerr << ex.what() << std::endl;
+            RAISE_EXCEPTION("Failed to compute the simple form of the SOP operator.");
+        }
+    }
 };
 
 

@@ -24,6 +24,7 @@ public:
     sOP& operator=(const sOP& o) = default;
     sOP& operator=(sOP&& o) = default;
 
+    void clear(){m_mode = 0; m_op_data.clear(); m_fermionic = false;}
     
     const std::string& op() const{return m_op_data;}
     std::string& op(){return m_op_data;}
@@ -229,6 +230,10 @@ utils::sPOP operator*(const utils::sPOP& a, const utils::sPOP& b)
 
 
 
+
+
+
+
 namespace utils
 {
 
@@ -344,7 +349,7 @@ protected:
 template <typename T> 
 std::ostream& operator<<(std::ostream& os, const utils::sNBO<T>& op)
 {
-    os << op.coeff() << op.pop();
+    os << op.coeff() << " " << op.pop();
     return os;
 }
 
@@ -517,8 +522,8 @@ std::ostream& operator<<(std::ostream& os, const utils::sSOP<T>& op)
     const auto plus = "+";
     for(const auto& t : op)
     {
-        sep = std::real(t.coeff()) > 0 ? plus : separator;
-        os << sep << t;
+        sep = std::real(t.coeff()) >= 0 ? plus : separator;
+        os << sep << t << std::endl;
     }
     return os;
 }

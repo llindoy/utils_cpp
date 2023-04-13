@@ -454,6 +454,120 @@ public:
     }
 };
 
+template <typename T, size_t D>
+class loader<linalg::tensor<T, D>>
+{
+protected:
+    using load_elements = loader<T>;
+
+
+protected:
+    template <typename obj>
+    static bool is_type_slice(const obj& val, size_t m, size_t index)
+    {
+        if(val.IsArray())
+        {
+            size_t n = val.Size();
+            if(n != m){return false;}
+
+            for(size_t i=0; i < n; ++i)
+            {
+                if(val[i].IsArray())
+                {
+                    return is_type_slice(val[i], val[0].Size(), index+1);
+                }
+                else
+                {
+                    if(index+1 == D)
+                    {
+                        return load_elements::is_type(val[i]);
+                    }
+                    return false;
+                }
+            }
+            return true;
+        }
+        return false;
+    }
+
+    template <typename obj>
+    static void load_slice(const obj& val, linalg::tensor<T, D>& ret)
+    {
+        size_t n = val.Size();
+        for(size_t i=0; i < n; ++i)
+        {
+            load_slice(val[i], ret[i]);
+        }
+    }
+
+    template <typename obj, size_t Dp>
+    static void load_slice(const obj& val, linalg::tensor_slice<linalg::tensor<T, D>, T, Dp> ret)
+    {
+        size_t n = val.Size();
+        for(size_t i=0; i < n; ++i)
+        {
+            load_slice(val[i], ret[i]);
+        }
+    }
+    template <typename obj>
+    static void load_slice(const obj& val, linalg::tensor_slice<linalg::tensor<T, D>, T, 1> ret)
+    {
+        size_t n = val.Size();
+        for(size_t i=0; i < n; ++i)
+        {
+            CALL_AND_HANDLE(load_elements::load(val[i], ret[i]), "Failed to load element of matrix."); 
+        }
+    }
+
+    template <typename obj>
+    static void get_size(const obj& val, std::array<size_t, D>& size, size_t ind)
+    {
+        if(ind != D)
+        {
+            size[ind] = val.Size();
+            get_size(val[0], size, ind+1);
+        }
+
+    }
+
+public:
+    template <typename obj>
+    static bool is_type(const obj& val)
+    {
+        if(val.IsArray())
+        {
+            return is_type_slice(val, val.Size(), 0);
+        }
+        else{return false;}
+    }
+
+    template <typename obj>
+    static linalg::tensor<T, D> load(const obj& val)
+    {
+        linalg::tensor<T, D> ret;
+        CALL_AND_RETHROW(load(val, ret));
+        return ret;
+    }    
+
+    template <typename obj>
+    static void load(const obj& val, linalg::tensor<T, D>& ret)
+    {
+        try
+        {
+            ASSERT(is_type(val), "Invalid rapidjson object.");
+            std::array<size_t, D> size; get_size(val, size, 0);
+            ret.resize(size);
+            load_slice(val, ret);
+        }
+        catch(const std::exception& ex)
+        {
+            std::cerr << ex.what() << std::endl;
+            RAISE_EXCEPTION("Failed to load matrix from rapidjson value.");
+        }
+    }
+};
+
+
 template <typename T>
 class loader<linalg::csr_matrix<T>>
 {
