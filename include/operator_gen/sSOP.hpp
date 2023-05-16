@@ -72,6 +72,11 @@ static inline sOP fermion_operator(const std::string& op, size_t mode)
     return sOP(op, mode, true);
 };
 
+bool operator<(const sOP& A, const sOP& B)
+{   
+    if(A.mode() == B.mode()){return A.op() < B.op();}
+    else{return A.mode() < B.mode();}
+}
 
 }
 
@@ -129,10 +134,29 @@ public:
         m_ops.push_back(b);
         return *this;
     }
+    sPOP& operator*=(const sPOP& b)
+    {
+        for(const auto& op : b.ops())
+        {
+            m_ops.push_back(op);
+        }
+        return *this;
+    }
+
     friend std::ostream& operator<<(std::ostream& os, const sPOP& op);
 
     friend bool operator==(const sPOP& A, const sPOP& B);
     friend bool operator!=(const sPOP& A, const sPOP& B);
+
+    size_t nmodes() const
+    {
+        size_t mode = 0;
+        for(const auto& sop : m_ops)
+        {
+            if(sop.mode()+1 > mode){mode = sop.mode()+1;}
+        }
+        return mode;
+    }
 protected: 
     template <typename ... Args>
     void unpack_args(const sOP& ops, Args&& ... args)
@@ -193,6 +217,22 @@ bool operator==(const sPOP& A, const sPOP& B)
 }
 
 bool operator!=(const sPOP& A, const sPOP& B){return !(A == B);}
+//compare two sop objects.  This assumes that the objects are sorted
+bool operator<(const sPOP& a, const sPOP& b)
+{
+    //iterate through each of the terms in a,b and if they aren't equal return which is larger
+    for(auto z : zip(a, b))
+    {
+        if(std::get<0>(z) != std::get<1>(z))
+        {
+            return std::get<0>(z) < std::get<1>(z);
+        }
+    }
+
+    //if they have all been equal then we return whether or not the size of the first one is smaller than the second one.  If it is then the above loop terminated because a is too small.
+    return a.ops().size() < b.ops().size();
+}
+
 
 }
   
@@ -226,7 +266,6 @@ utils::sPOP operator*(const utils::sPOP& a, const utils::sPOP& b)
     }
     return ret;
 }
-
 
 
 
@@ -330,6 +369,10 @@ public:
     friend std::ostream& operator<< <T>(std::ostream& os, const sNBO<T>& op);
 
 
+    size_t nmodes() const
+    {
+        return m_ops.nmodes();
+    }
 public:
     iterator begin() {  return iterator(m_ops.begin());  }
     iterator end() {  return iterator(m_ops.end());  }
@@ -459,13 +502,13 @@ public:
 
 public:
     sSOP(){}
-    sSOP(const sNBO<T>& str){m_string.push_back(str);}
-    sSOP(const std::list<sNBO<T>>& str) : m_string(str){}
-    template <typename ... Args>
-    sSOP(const sNBO<T>& str){m_string.push_back(str);}
-
-    sSOP(sNBO<T>&& str){m_string.push_back(std::forward(str));}
-    sSOP(std::list<sNBO<T>>&& str) : m_string(std::forward(str)){}
+    sSOP(const std::string& label) : m_label(label){}
+    sSOP(std::string&& label) : m_label(std::forward<std::string>(label)){}
+    sSOP(const sPOP& str){m_terms.push_back(sNBO<T>(T(1.0), str) );}
+    sSOP(const sNBO<T>& str){m_terms.push_back(str);}
+    sSOP(const std::list<sNBO<T>>& str) : m_terms(str){}
+    sSOP(sNBO<T>&& str){m_terms.push_back(std::forward(str));}
+    sSOP(std::list<sNBO<T>>&& str) : m_terms(std::forward(str)){}
 
     sSOP(const sSOP& o) = default;
     sSOP(sSOP&& o) = default;
@@ -475,49 +518,90 @@ public:
 
     sSOP<T>& operator+=(const sSOP<T>& a)
     {
-        for(auto& t : a.m_string)
+        for(auto& t : a.m_terms)
         {
-            m_string.push_back(t);
+            m_terms.push_back(t);
         }
         return *this;
     }
 
     sSOP<T>& operator+=(const sNBO<T>& a)
     {
-        m_string.push_back(a);
+        m_terms.push_back(a);
         return *this;
     }
 
-    sSOP<T>& operator*=(const T& a)
+    sSOP<T>& operator*=(const sOP& a)
     {
-        for(auto& op : m_string)
+        for(auto& op : m_terms)
         {
             op *= a;
         }
         return *this;
     }
 
+    sSOP<T>& operator*=(const sPOP& a)
+    {
+        for(auto& op : m_terms)
+        {
+            op *= a;
+        }
+        return *this;
+    }
+
+    template <typename U>
+    sSOP<T>& operator*=(const sNBO<U>& a)
+    {
+        for(auto& op : m_terms)
+        {
+            op *= a;
+        }
+        return *this;
+    }
+
+
     friend std::ostream& operator<< <T>(std::ostream& os, const sSOP<T>& op);
 
-    size_t nterms() const{return m_string.size();}
-public:
-    iterator begin() {  return iterator(m_string.begin());  }
-    iterator end() {  return iterator(m_string.end());  }
-    const_iterator begin() const {  return const_iterator(m_string.begin());  }
-    const_iterator end() const {  return const_iterator(m_string.end());  }
+    size_t nterms() const{return m_terms.size();}
+    size_t nmodes() const
+    {
+        size_t mode = 0;
+        for(const auto& sop : m_terms)
+        {
+            if(sop.nmodes() > mode){mode = sop.nmodes();}
+        }
+        return mode;
+    }
 
-    reverse_iterator rbegin() {  return reverse_iterator(m_string.rbegin());  }
-    reverse_iterator rend() {  return reverse_iterator(m_string.rend());  }
-    const_reverse_iterator rbegin() const {  return const_reverse_iterator(m_string.rbegin());  }
-    const_reverse_iterator rend() const {  return const_reverse_iterator(m_string.rend());  }
+    const std::string& label() const{return m_label;}
+    std::string& label(){return m_label;}
+
+    std::list<sNBO<T>>& terms() {return m_terms;}
+    const std::list<sNBO<T>>& terms() const {return m_terms;}
+
+
+    sNBO<T>& operator[](size_t r){return m_terms[r];}
+    const sNBO<T>& operator[](size_t r) const{return m_terms[r];}
+public:
+    iterator begin() {  return iterator(m_terms.begin());  }
+    iterator end() {  return iterator(m_terms.end());  }
+    const_iterator begin() const {  return const_iterator(m_terms.begin());  }
+    const_iterator end() const {  return const_iterator(m_terms.end());  }
+
+    reverse_iterator rbegin() {  return reverse_iterator(m_terms.rbegin());  }
+    reverse_iterator rend() {  return reverse_iterator(m_terms.rend());  }
+    const_reverse_iterator rbegin() const {  return const_reverse_iterator(m_terms.rbegin());  }
+    const_reverse_iterator rend() const {  return const_reverse_iterator(m_terms.rend());  }
 protected:
-    std::list<sNBO<T>> m_string;
+    std::list<sNBO<T>> m_terms;
+    std::string m_label;
 };
 
 
 template <typename T> 
 std::ostream& operator<<(std::ostream& os, const utils::sSOP<T>& op)
 {
+    if(!op.label().empty()){os << op.label() << ": " << std::endl;}
     const auto separator = "";    const auto* sep = "";
     const auto plus = "+";
     for(const auto& t : op)
@@ -536,9 +620,9 @@ template <typename T>
 utils::sSOP<T> operator+(const utils::sSOP<T>& a, const utils::sSOP<T>& b)
 {
     utils::sSOP<T> ret(a);
-    for(auto& t : b.m_string)
+    for(auto& t : b.terms())
     {
-        ret.m_string.push_back(t);
+        ret.terms().push_back(t);
     }
     return  ret;
 }
@@ -547,7 +631,7 @@ template <typename T>
 utils::sSOP<T> operator+(const utils::sNBO<T>& a, const utils::sSOP<T>& b)
 {
     utils::sSOP<T> ret(b);
-    ret.m_string.push_back(a);
+    ret.terms().push_back(a);
     return  ret;
 }
 
@@ -555,7 +639,7 @@ template <typename T>
 utils::sSOP<T> operator+(const utils::sSOP<T>& b, const utils::sNBO<T>& a)
 {
     utils::sSOP<T> ret(b);
-    ret.m_string.push_back(a);
+    ret.terms().push_back(a);
     return  ret;
 }
 
@@ -563,7 +647,7 @@ template <typename T>
 utils::sSOP<T> operator+(const utils::sOP& a, const utils::sSOP<T>& b)
 {
     utils::sSOP<T> ret(b);
-    ret.m_string.push_back({1.0, a});
+    ret.terms().push_back({1.0, a});
     return  ret;
 }
 
@@ -571,11 +655,89 @@ template <typename T>
 utils::sSOP<T> operator+(const utils::sSOP<T>& b, const utils::sOP& a)
 {
     utils::sSOP<T> ret(b);
-    ret.m_string.push_back({1.0, a});
+    ret.terms().push_back({1.0, a});
     return  ret;
 }
 
+template <typename T> 
+utils::sSOP<T> operator*(const utils::sOP& b, const utils::sSOP<T>& a)
+{
+    utils::sSOP<T> ret(b);
+    for(auto& op : ret.terms())
+    {
+        op *= a;
+    }
+    return  ret;
+}
 
+template <typename T> 
+utils::sSOP<T> operator*(const utils::sSOP<T>& b, const utils::sOP& a)
+{
+    utils::sSOP<T> ret(b);
+    for(auto& op : ret.terms())
+    {
+        op *= a;
+    }
+    return  ret;
+}
+
+template <typename T> 
+utils::sSOP<T> operator*(const utils::sPOP& b, const utils::sSOP<T>& a)
+{
+    utils::sSOP<T> ret(b);
+    for(auto& op : ret.terms())
+    {
+        op *= a;
+    }
+    return  ret;
+}
+
+template <typename T> 
+utils::sSOP<T> operator*(const utils::sSOP<T>& b, const utils::sPOP& a)
+{
+    utils::sSOP<T> ret(b);
+    for(auto& op : ret.terms())
+    {
+        op *= a;
+    }
+    return  ret;
+}
+
+template <typename T, typename U>
+utils::sSOP<T> operator*(const utils::sNBO<U>& b, const utils::sSOP<T>& a)
+{
+    utils::sSOP<T> ret(b);
+    for(auto& op : ret.terms())
+    {
+        op *= a;
+    }
+    return  ret;
+}
+
+template <typename T, typename U>
+utils::sSOP<T> operator*(const utils::sSOP<T>& b, const utils::sNBO<U>& a)
+{
+    utils::sSOP<T> ret(b);
+    for(auto& op : ret.terms())
+    {
+        op *= a;
+    }
+    return  ret;
+}
+
+template <typename T>
+utils::sSOP<T> operator*(const utils::sSOP<T>& a, const utils::sSOP<T>& b)
+{
+    utils::sSOP<T> ret;
+    for(const auto& _a : a.terms())
+    {
+        for(const auto& _b : b.terms())
+        {
+            ret += _a*_b;
+        }
+    }
+    return  ret;
+}
 
 #endif
 
