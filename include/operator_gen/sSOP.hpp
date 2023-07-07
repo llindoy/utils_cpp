@@ -453,7 +453,7 @@ template <typename T>
 utils::sNBO<T> operator*(const utils::sNBO<T>& a, const utils::sNBO<T>& b)
 {
     utils::sNBO<T> ret(a);
-    ret.m_coeff *= b.m_coeff;
+    ret.coeff() *= b.coeff();
     for(const auto& op : b.ops())
     {
         ret.pop().append(op);
@@ -513,6 +513,8 @@ public:
     sSOP(const sSOP& o) = default;
     sSOP(sSOP&& o) = default;
 
+    void clear(){m_terms.clear();}
+
     sSOP& operator=(const sSOP& o) = default;
     sSOP& operator=(sSOP&& o) = default;
 
@@ -522,6 +524,12 @@ public:
         {
             m_terms.push_back(t);
         }
+        return *this;
+    }
+
+    sSOP<T>& operator+=(const sPOP& a)
+    {
+        m_terms.push_back({T(1), a});
         return *this;
     }
 
@@ -556,6 +564,13 @@ public:
         {
             op *= a;
         }
+        return *this;
+    }
+
+    template <typename ... Args>
+    sSOP<T>& emplace_back(Args&& ... args)
+    {
+        m_terms.emplace_back(std::forward<Args>(args)...);
         return *this;
     }
 
@@ -640,6 +655,23 @@ utils::sSOP<T> operator+(const utils::sSOP<T>& b, const utils::sNBO<T>& a)
 {
     utils::sSOP<T> ret(b);
     ret.terms().push_back(a);
+    return  ret;
+}
+
+
+template <typename T>
+utils::sSOP<T> operator+(const utils::sPOP& a, const utils::sSOP<T>& b)
+{
+    utils::sSOP<T> ret(b);
+    ret.terms().push_back({T(1), a});
+    return  ret;
+}
+
+template <typename T>
+utils::sSOP<T> operator+(const utils::sSOP<T>& b, const utils::sPOP& a)
+{
+    utils::sSOP<T> ret(b);
+    ret.terms().push_back({T(1), a});
     return  ret;
 }
 

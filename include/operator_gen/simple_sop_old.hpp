@@ -12,8 +12,6 @@
 namespace utils
 {
 
-//TODO: Come up with more efficient structure for handling JW strings.  
-
 
 class simpleSOP
 {
@@ -43,16 +41,14 @@ public:
             is_fermion_mode[i] = sys_info[i].fermionic();
         }
 
+        //now we build a new sop operator that does not contain any fermionic operators - e.g. perform the required Jordan wigner string mappings to remove all traces of operators
+        sSOP<T> mapped_sop;
+        CALL_AND_HANDLE(map_operator(sop, is_fermion_mode, mapped_sop), "Failed to map sum of product operator");
+
+        //now that we have mapped all fermionic operators to qubit operators we no longer have to worry about the anticommutation relations and we can begin to simplify the 
         sSOP<T> simplified_sop;
-        if(contains_fermionic_operator)
-        {
-            //now we build a new sop operator that does not contain any fermionic operators - e.g. perform the required Jordan wigner string mappings to remove all traces of operators
-            CALL_AND_HANDLE(map_operator(sop, is_fermion_mode, simplified_sop), "Failed to map sum of product operator");
-        }
-        else
-        {
-            CALL_AND_HANDLE(simplify_operator(sop, is_fermion_mode, simplified_sop), "Failed to simplify the form of the sum of product operator.");
-        }
+        CALL_AND_HANDLE(simplify_operator(mapped_sop, is_fermion_mode, simplified_sop), "Failed to simplify the form of the sum of product operator.");
+        mapped_sop.clear();
 
         //finally handle any repeated operator string terms combining coefficients
         sSOP<T> final_sop;
@@ -74,28 +70,19 @@ public:
         std::vector<bool> is_fermion_mode(nmodes);      std::fill(is_fermion_mode.begin(), is_fermion_mode.end(), false);
         ASSERT(set_is_fermionic_mode(sop, is_fermion_mode), "Failed to determine if operators were fermionic from SOP.  Inconsistent definitions throughout.");
 
-        bool contains_fermionic_operator = false;
-        for(size_t i = 0; i < _nmodes; ++i)
-        {
-            if(is_fermion_mode[i]){contains_fermionic_operator = true;}
-        }
-
         INIT_TIMER;
         //now we build a new sop operator that does not contain any fermionic operators - e.g. perform the required Jordan wigner string mappings to remove all traces of operators
         START_TIMER;
-
-        sSOP<T> simplified_sop;
-        if(contains_fermionic_operator)
-        {
-            //now we build a new sop operator that does not contain any fermionic operators - e.g. perform the required Jordan wigner string mappings to remove all traces of operators
-            CALL_AND_HANDLE(map_operator(sop, is_fermion_mode, simplified_sop), "Failed to map sum of product operator");
-        }
-        else
-        {
-            CALL_AND_HANDLE(simplify_operator(sop, is_fermion_mode, simplified_sop, contains_fermionic_operator), "Failed to simplify the form of the sum of product operator.");
-        }
+        sSOP<T> mapped_sop;
+        CALL_AND_HANDLE(map_operator(sop, is_fermion_mode, mapped_sop), "Failed to map sum of product operator");
         STOP_TIMER("Fermion Mapping");
 
+        //now we go through and we map each 
+        START_TIMER;
+        sSOP<T> simplified_sop;
+        CALL_AND_HANDLE(simplify_operator(mapped_sop, is_fermion_mode, simplified_sop), "Failed to simplify the form of the sum of product operator.");
+        STOP_TIMER("Term Simplification");
+        mapped_sop.clear();
 
         START_TIMER;
         sSOP<T> final_sop;
@@ -122,12 +109,9 @@ protected:
     }
 
     template <typename T> 
-    static inline void simplify_operator(const sSOP<T>& sop, const std::vector<bool>& is_fermi, sSOP<T>& _op, bool do_fermi)
+    static inline void simplify_operator(const sSOP<T>& sop, const std::vector<bool>& is_fermi, sSOP<T>& _op)
     {
-        size_t nmodes = is_fermi.size();
-
-        std::vector<size_t> njw;    if(do_fermi){njw.resize(nmodes);}
-        //now we simplify the operator if required
+        //now we perform the JW mapping for this operator
         for(const auto& pop : sop)
         {
             sNBO<T> term;    term.coeff() = pop.coeff();
@@ -135,17 +119,17 @@ protected:
             if(term.coeff() != T(0))
             {
                 //check if the mode contains a fermionic operator at all.  If it doesn't then we just directly insert it into the new operator
-                if(simplify_string_operator(pop.pop(), is_fermi, term.pop(), do_fermi, njw)){term.coeff() = -pop.coeff();}
+                if(simplify_string_operator(pop.pop(), is_fermi, term.pop())){term.coeff() = -pop.coeff();}
                 _op += term;
             }
         }
 
     }
 
-    static inline bool simplify_string_operator(const sPOP& in, const std::vector<bool>& is_fermi, sPOP& out, bool do_fermi, std::vector<size_t>& njw)
+    static inline bool simplify_string_operator(const sPOP& in, const std::vector<bool>& is_fermi, sPOP& out)
     {
         size_t nmodes = is_fermi.size();
-        std::map<size_t, std::list<std::string>> terms;
+        std::vector<std::list<std::string>> terms(nmodes);
 
         //now we are free to reorder the operators acting on different modes but we need to preserve the ordering of operators acting on a single mode.
         for(const auto& op : in)
@@ -153,48 +137,45 @@ protected:
             terms[op.mode()].push_back(op.op());
         }
 
+
         bool flip_coeff = false;
-          
-        if(do_fermi)
+        std::vector<size_t> njw(nmodes);    std::fill(njw.begin(), njw.end(), 0);
+        //now we attempt to simplify the JW string operators acting on a given mode
+        for(size_t i = 0; i < nmodes; ++i)
         {
-            std::fill(njw.begin(), njw.end(), 0);
-            //now we attempt to simplify the JW string operators acting on a given mode
-            for(size_t i = 0; i < nmodes; ++i)
+            if(is_fermi[i])
             {
-                if(is_fermi[i])
+                njw[i] = 0;
+                bool attempt_simplify = true;
+                for(const auto& str : terms[i])
                 {
-                    njw[i] = 0;
-                    bool attempt_simplify = true;
+                    if(str == std::string("jw"))
+                    {
+                        ++njw[i];
+                    }
+                    else if( (str != std::string("n") && str != std::string("a") && str != std::string("adag") && str != std::string("a+")))
+                    {
+                        attempt_simplify = false;
+                    }
+                }
+
+                //if the number of jw strings is greater than 1 then we pull the JW strings to the front
+                //and cancel in pairs
+                if(attempt_simplify && njw[i] != 0)
+                {
+                    size_t nc = 0;
                     for(const auto& str : terms[i])
                     {
-                        if(str == std::string("jw"))
+                        if(str == std::string("a") || str == std::string("adag") || str == std::string("a+"))
                         {
-                            ++njw[i];
+                            ++nc;
                         }
-                        else if( (str != std::string("n") && str != std::string("a") && str != std::string("a+")) && (str != std::string("n~") && str != std::string("a~") && str != std::string("a+~")) )
+                        else if(str == std::string("jw"))
                         {
-                            attempt_simplify = false;
-                        }
-                    }
-
-                    //if the number of jw strings is greater than 1 then we pull the JW strings to the front
-                    //and cancel in pairs
-                    if(attempt_simplify && njw[i] != 0)
-                    {
-                        size_t nc = 0;
-                        for(const auto& str : terms[i])
-                        {
-                            if(str == std::string("a") || str == std::string("a+") || str == std::string("a~") || str == std::string("a+~"))
+                            //if there are an odd number of creation and annihilation operators then we use the fact that bringing the JW string through a creation or annihilation operator flips the sign
+                            if(nc % 2 == 1)
                             {
-                                ++nc;
-                            }
-                            else if(str == std::string("jw"))
-                            {
-                                //if there are an odd number of creation and annihilation operators then we use the fact that bringing the JW string through a creation or annihilation operator flips the sign
-                                if(nc % 2 == 1)
-                                {
-                                    flip_coeff = !flip_coeff;
-                                }
+                                flip_coeff = !flip_coeff;
                             }
                         }
                     }
@@ -204,14 +185,12 @@ protected:
 
 
         //and finally we create the new string product operator to return
-        for(const auto& iterm : terms)
+        for(size_t i = 0; i < nmodes; ++i)
         {
-            size_t i = iterm.first;
-            const auto& term = iterm.second;
             if(is_fermi[i])
             {
                 bool njwadd = false;
-                for(const auto& str : term)
+                for(const auto& str : terms[i])
                 {
                     if(str != std::string("jw"))
                     {
@@ -221,8 +200,8 @@ protected:
                             if(njw[i] % 2 == 1)
                             {
                                 //now we check the first operator
-                                if(str == std::string("n") || str == std::string("a+") || str == std::string("n~") || str == std::string("a+~")){flip_coeff = !flip_coeff;}
-                                else if(str == std::string("a") || str == std::string("a~")){}
+                                if(str == std::string("n") || str == std::string("adag") || str == std::string("a+")){flip_coeff = !flip_coeff;}
+                                else if(str == std::string("a")){}
                                 else
                                 {
                                     out*=sOP(std::string("jw"), i);
@@ -243,12 +222,11 @@ protected:
             }
             else
             {
-                for(const auto& str : term)
+                for(const auto& str : terms[i])
                 {
                     out *= sOP(str, i);
                 }
             }
-            
         }
         return flip_coeff;
     }
@@ -273,9 +251,7 @@ protected:
             if(is_fermi[i]){fermion_modes[counter] = i; ++counter;}
         }
 
-        size_t nmodes = is_fermi.size();
-        bool do_fermi = contains_fermionic_operator;
-        std::vector<size_t> njw;    if(do_fermi){njw.resize(nmodes);}
+
         sSOP<T> _sop;
 
         //here we are just doing the processing required to handle the fermionic modes
@@ -342,24 +318,11 @@ protected:
                                 term *= op;
                             }
                         }
-                        sNBO<T> term2;    term2.coeff() = term.coeff();
-                        //only add in the term if the coefficient is non-zero
-                        if(term2.coeff() != T(0))
-                        {
-                            //check if the mode contains a fermionic operator at all.  If it doesn't then we just directly insert it into the new operator
-                            if(simplify_string_operator(term.pop(), is_fermi, term2.pop(), do_fermi, njw)){term2.coeff() = -term.coeff();}
-                            _sop += term2;
-                        }
+                        _sop += term;
                     }
                     else
                     {
-                        //only add in the term if the coefficient is non-zero
-                        if(term.coeff() != T(0))
-                        {
-                            //check if the mode contains a fermionic operator at all.  If it doesn't then we just directly insert it into the new operator
-                            if(simplify_string_operator(pop.pop(), is_fermi, term.pop(), do_fermi, njw)){term.coeff() = -pop.coeff();}
-                            _sop += term;
-                        }
+                        _sop += pop;
                     }
                 }
             }
@@ -370,14 +333,7 @@ protected:
             {
                 if(pop.coeff() != T(0))
                 {
-                    sNBO<T> term;    term.coeff() = pop.coeff();
-                    //only add in the term if the coefficient is non-zero
-                    if(term.coeff() != T(0))
-                    {
-                        //check if the mode contains a fermionic operator at all.  If it doesn't then we just directly insert it into the new operator
-                        if(simplify_string_operator(pop.pop(), is_fermi, term.pop(), do_fermi, njw)){term.coeff() = -pop.coeff();}
-                        _sop += term;
-                    }
+                    _sop += pop;
                 }
             }
         }
@@ -395,29 +351,14 @@ protected:
             out = sOP({"a", in.mode()});
             return -1;
         }
-        else if(label == "c~" || label == "a~"|| label == "f~")
-        {
-            out = sOP({"a~", in.mode()});
-            return -1;
-        }
         else if(label == "cdag" || label == "c^\\dagger" || label == "c+"  || label == "adag" || label == "a^\\dagger" || label == "a^+" || label == "fdag" || label == "f^\\dagger"|| label == "f+")
         {
             out = sOP({"a+", in.mode()});
             return 1;
         }
-        else if(label == "cdag~" || label == "c^\\dagger~" || label == "c+~"  || label == "adag~" || label == "a^\\dagger~" || label == "a^+~" || label == "fdag~" || label == "f^\\dagger~"|| label == "f+~")
-        {
-            out = sOP({"a+~", in.mode()});
-            return 1;
-        }
         else if(label == "n")
         {
             out = sOP({"n", in.mode()});
-            return 0;
-        }
-        else if(label == "n~")
-        {
-            out = sOP({"n~", in.mode()});
             return 0;
         }
         else
